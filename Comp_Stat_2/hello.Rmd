@@ -1,0 +1,224 @@
+---
+title: "Comp_Stat_2"
+output: html_document
+date: "2023-03-16"
+---
+
+```{r}
+library("ggplot2")
+library("tibble")
+library("bootstrap")
+library("magrittr")
+data(law)
+law %<>% add_column(observation = 1:nrow(law), .before = 1)
+ggplot(law, aes(x = LSAT, y = GPA)) +
+geom_text(aes(label = observation),
+hjust = 0, vjust = 0)
+```
+```{r}
+#1.
+# Function to compute Pearson's correlation coefficient
+correlation <- function(data, indices) {
+  return(cor(data[unlist(indices), "LSAT"], data[unlist(indices), "GPA"]))
+}
+
+# Complete enumeration bootstrap
+# complete_enumeration_bootstrap <- function(data, B) {
+#   n <- nrow(data)
+#   all_indices <- expand.grid(rep(list(seq_len(n)), n))
+#   results <- apply(all_indices, 1, function(indices) correlation(data, indices))
+#   return(sample(results, B, replace = TRUE))
+# }
+# complete_enumeration_bootstrap <- function(data, B) {
+#   n <- nrow(data)
+#   all_indices <- t(combn(n, n, simplify = FALSE))
+#   results <- apply(all_indices, 1, function(indices) correlation(data, indices))
+#   return(sample(results, B, replace = TRUE))
+# }
+complete_enumeration_bootstrap <- function(data, B) {
+  n <- nrow(data)
+  all_indices <- t(combn(n, n, simplify = FALSE))
+  results <- rep(0, B)
+  for (i in 1:B) {
+    bootstrap_indices <- sample(1:n, replace = TRUE)
+    results[i] <- correlation(data, bootstrap_indices)
+  }
+  return(results)
+}
+B <- 40000
+complete_enum_results <- complete_enumeration_bootstrap(law, B)
+
+
+```
+
+
+```{r}
+# 2.
+# Gray code generator function
+gray_code_generator <- function(n) {
+  if (n == 1) return(matrix(c(0, 1), ncol =  1))
+  previous_gray_code <- gray_code_generator(n - 1)
+  upper_half <- cbind(0, previous_gray_code)
+  lower_half <- cbind(1, tail(previous_gray_code, nrow(previous_gray_code)))
+  return(rbind(upper_half, lower_half))
+}
+
+# Gray code-based bootstrap
+# gray_code_bootstrap <- function(data, B) {
+#   n <- nrow(data)
+#   gray_codes <- gray_code_generator(n)
+#   results <- sapply(1:(2^n), function(i) correlation(data, gray_codes[i, ] + 1))
+#   return(sample(results, B, replace = TRUE))
+# }
+gray_code_bootstrap <- function(data, B) {
+  n <- nrow(data)
+  gray_codes <- gray_code_generator(n)
+  results <- sapply(1:(2^n), function(i) {
+    bootstrap_indices <- which(gray_codes[i, ] == 1)
+    correlation(data, bootstrap_indices)
+  })
+  return(sample(results, B, replace = TRUE))
+}
+
+B <- 40000
+gray_code_results <- gray_code_bootstrap(law, B)
+
+
+```
+
+
+```{r}
+#3.
+system.time(complete_enum_results <- complete_enumeration_bootstrap(law,B))
+system.time(gray_code_results <- gray_code_bootstrap(law, B))
+
+
+```
+
+
+```{r}
+#4.
+# Monte Carlo bootstrap
+monte_carlo_bootstrap <- function(data, B) {
+  boot_obj <- boot(data, correlation, R = B)
+  return(boot_obj$t)
+}
+
+monte_carlo_results <- monte_carlo_bootstrap(law_data, B)
+
+# Function to compute differences between the two bootstrap methods
+compare_bootstraps <- function(results1, results2, threshold) {
+  abs_diff <- abs(mean(results1) - mean(results2))
+  return(abs_diff > threshold)
+}
+
+# Finding observations to remove
+removed_indices <- list()
+threshold <- 0.01
+for (i in 1:nrow(law_data)) {
+  temp_data <- law_data[-i, ]
+  temp_enum_results <- complete_enumeration_bootstrap(temp_data, B)
+  temp_monte_carlo_results <- monte_carlo_bootstrap(temp_data, B)
+  if (compare_bootstraps(temp_enum_results, temp_monte_carlo_results, threshold)) {
+    removed_indices <- append(removed_indices, list(i))
+  }
+}
+
+removed_indices
+
+
+```
+
+
+```{r}
+#  Cook's distance for linear regression model
+fit <- lm(GPA ~ LSAT, data = law)
+cooksd <- cooks.distance(fit)
+
+# Identify influential observations
+influential_obs <- which(cooksd > 4/nrow(law))
+print(influential_obs)
+
+# Remove influential observations from dataset
+law_filtered <- law[-influential_obs, ]
+
+
+```
+
+
+```{r}
+# Pearson's correlation coefficient
+correlation <- function(data, indices) {
+  return(cor(data[indices, "LSAT"], data[indices, "GPA"]))
+}
+
+# Monte Carlo bootstrap
+monte_carlo_bootstrap <- function(data, B) {
+  n <- nrow(data)
+  results <- sapply(1:B, function(i) {
+    bootstrap_indices <- sample(1:n, replace = TRUE)
+    correlation(data, bootstrap_indices)
+  })
+  return(results)
+}
+
+# Removing influential observations from dataset
+law_filtered <- law[-influential_obs, ]
+
+# Run Monte Carlo bootstrap on filtered dataset
+B <- 40000
+# monte_carlo_results_filtered <- monte_carlo_bootstrap(law_filtered, B)
+monte_carlo_results_filtered <- monte_carlo_bootstrap(law, B)
+
+```
+
+
+```{r}
+# Comparing distributions of bootstrap results
+complete_enum_df <- tibble(Correlation = complete_enum_results, Method = "Complete Enumeration")
+monte_carlo_df <- tibble(Correlation = monte_carlo_results_filtered, Method = "Monte Carlo")
+combined_df <- rbind(complete_enum_df, monte_carlo_df)
+
+ggplot(combined_df, aes(x = Correlation, fill = Method)) +
+  geom_density(alpha = 0.5) +
+  ggtitle("Distribution of Correlation Coefficients") +
+  xlab("Correlation Coefficient") +
+  ylab("Density")
+
+
+```
+
+
+```{r}
+
+
+
+```
+
+
+```{r}
+
+
+
+```
+
+
+```{r}
+
+
+
+```
+
+
+```{r}
+
+
+
+```
+
+
+```{r}
+
+
+
+```
